@@ -152,19 +152,10 @@ def load_wh_files(folder_path):
         df_whp  = pd.read_csv(folder / "WHP.csv", usecols=[0, 1], skiprows=2, header=None)
         df_whd  = pd.read_csv(folder / "WH_Density.csv", usecols=[0, 1, 2, 3, 4, 5], skiprows=2, header=None)
         
-        # Load WH_Viscosity if available
-        df_whv = None
-        if (folder / "WH_Viscosity.csv").exists():
-            df_whv = pd.read_csv(folder / "WH_Viscosity.csv", usecols=[0, 1, 2, 3, 4], skiprows=2, header=None)
-        
         # Set column names
         df_mass.columns = ["Time [s]", "Mass Rate - Bubbles [kg/s]", "Mass Rate - Continuous Gas [kg/s]", "Mass Rate - Continuous Liquid [kg/s]", "Mass Rate - Droplets [kg/s]", "Mass Rate - Total [kg/s]", "Mass Rate - Total Gas [kg/s]", "Mass Rate - Total Liquid [kg/s]"]
         df_whp.columns  = ["Time [s]", "Pressure [bar]"]
         df_whd.columns  = ["Time [s]", "Density - Bubbles [kg/m3]", "Density - Continuous Gas [kg/m3]", "Density - Continuous Liquid [kg/m3]", "Density - Droplets [kg/m3]", "Density - Mixture [kg/m3]"]
-        
-        # Set WH_Viscosity column names if loaded
-        if df_whv is not None:
-            df_whv.columns  = ["Time [s]", "Viscosity - Bubbles [Pa.s]", "Viscosity - Continuous Gas [Pa.s]", "Viscosity - Continuous Liquid [Pa.s]", "Viscosity - Droplets [Pa.s]"]
         
         # Switch sign of mass rate columns
         for col in df_mass.columns:
@@ -175,8 +166,6 @@ def load_wh_files(folder_path):
         df_whp["Time [days]"] = df_whp["Time [s]"] * SEC_TO_DAYS
         df_mass["Time [days]"] = df_mass["Time [s]"] * SEC_TO_DAYS
         df_whd["Time [days]"] = df_whd["Time [s]"] * SEC_TO_DAYS
-        if df_whv is not None:
-            df_whv["Time [days]"] = df_whv["Time [s]"] * SEC_TO_DAYS
         
         # Load WHT if available
         df_wht = None
@@ -184,8 +173,8 @@ def load_wh_files(folder_path):
             df_wht = pd.read_csv(folder / "WHT.csv", usecols=[0, 1, 3, 4], skiprows=2, header=None)
             df_wht.columns = ["Time [s]", "Temperature - Average[C]", "Temperature - Gas[C]", "Temperature - Liquid[C]"]
             df_wht["Time [days]"] = df_wht["Time [s]"] * SEC_TO_DAYS
-            # Add Fahrenheit column for WHT
-            df_wht["Temperature [°F]"] = df_wht["Temperature - Average[C]"]
+            # WHT.csv exports Celsius; keep the plotting column in Celsius.
+            df_wht["Temperature [°C]"] = df_wht["Temperature - Average[C]"]
         
         return_dict = {
             'WHP': df_whp,
@@ -194,10 +183,6 @@ def load_wh_files(folder_path):
             'WHT': df_wht
         }
         
-        # Add WH_Viscosity if loaded
-        if df_whv is not None:
-            return_dict['WH_Viscosity'] = df_whv
-            
         return return_dict
         
     except FileNotFoundError as e:
@@ -278,31 +263,6 @@ def load_bh_files(folder_path):
     except FileNotFoundError as e:
         print(f"Missing BH file in {folder_path}: {e}")
         return {}
-
-def determine_viscosity_column(df_temp, df_pressure, df_viscosity):
-    """Determine which viscosity column to use based on CO2 critical point for each data point."""
-    # Ensure dataframes are aligned by index (time)
-    df_combined = pd.DataFrame({
-        'Temperature - Average[C]': df_temp['Temperature - Average[C]'],
-        'Pressure [bar]': df_pressure['Pressure [bar]'],
-        'Viscosity - Continuous Liquid [Pa.s]': df_viscosity['Viscosity - Continuous Liquid [Pa.s]'],
-        'Viscosity - Continuous Gas [Pa.s]': df_viscosity['Viscosity - Continuous Gas [Pa.s]']
-    }).dropna()
-
-    selected_viscosity = []
-    for index, row in df_combined.iterrows():
-        temp_c = row['Temperature - Average[C]']
-        pressure_bar = row['Pressure [bar]']
-
-        # Since pressure is always above critical, use temperature to decide
-        if temp_c < T_CRIT_C:
-            selected_viscosity.append(row['Viscosity - Continuous Liquid [Pa.s]'])
-        else:
-            selected_viscosity.append(row['Viscosity - Continuous Gas [Pa.s]'])
-            
-    print(f"Critical point: Tcrit = {T_CRIT_C:.2f}°C, Pcrit = {P_CRIT_BAR:.2f} bar")
-    print(f"Dynamically selected viscosity column based on temperature relative to critical point.")
-    return pd.Series(selected_viscosity, index=df_combined.index)
 
 def determine_density_column(df_temp, df_pressure, df_density):
     """Determine which density column to use based on CO2 critical point for each data point."""
@@ -410,45 +370,10 @@ def plot_comparison(liquid_data, sc_data, parameter_name):
             ymin_offset = -28
             ymax_offset = 22
             inset_bbox = (-0.29, -0.28, 1.0, 1.0)
-        elif parameter_name == 'WH_Viscosity':
-            # Create combined viscosity series based on critical point
-            if 'WHT' in liquid_data and liquid_data['WHT'] is not None and 'WHP' in liquid_data and liquid_data['WH_Viscosity'] is not None:
-                viscosity_series_liquid = determine_viscosity_column(
-                    liquid_data['WHT'], liquid_data['WHP'], liquid_data['WH_Viscosity']
-                )
-                # Create a temporary dataframe with the combined series
-                liquid_df = pd.DataFrame({
-                    'Time [days]': liquid_data['WHT']['Time [days]'],
-                    'Time [s]': liquid_data['WHT']['Time [s]'],
-                    'Viscosity [Pa.s]': viscosity_series_liquid
-                }).dropna()
-                y_col_liquid = 'Viscosity [Pa.s]'
-            else:
-                y_col_liquid = "Viscosity - Continuous Liquid [Pa.s]"
-            
-            if 'WHT' in sc_data and sc_data['WHT'] is not None and 'WHP' in sc_data and sc_data['WH_Viscosity'] is not None:
-                viscosity_series_sc = determine_viscosity_column(
-                    sc_data['WHT'], sc_data['WHP'], sc_data['WH_Viscosity']
-                )
-                # Create a temporary dataframe with the combined series
-                sc_df = pd.DataFrame({
-                    'Time [days]': sc_data['WHT']['Time [days]'],
-                    'Time [s]': sc_data['WHT']['Time [s]'],
-                    'Viscosity [Pa.s]': viscosity_series_sc
-                }).dropna()
-                y_col_sc = 'Viscosity [Pa.s]'
-            else:
-                y_col_sc = "Viscosity - Continuous Gas [Pa.s]"
-            
-            ylabel = 'WH Viscosity [Pa.s]'
-            #ymin_offset = 0.00000000007
-            ymin_offset = -0.000003
-            ymax_offset = 0.000003
-            inset_bbox = (-0.31, -0.21, 1.0, 1.0)
         elif parameter_name == 'WHT':
-            y_col_liquid = 'Temperature [°F]'
-            y_col_sc = 'Temperature [°F]'
-            ylabel = 'WHT [°F]'
+            y_col_liquid = 'Temperature [°C]'
+            y_col_sc = 'Temperature [°C]'
+            ylabel = 'WHT [°C]'
             ymin_offset = -1.1
             ymax_offset = 0.9
             inset_bbox = (-0.21, -0.21, 1.0, 1.0)
@@ -539,7 +464,12 @@ def main():
     print(f"SC CO2 only: {sorted(sc_params - liquid_params)}")
     
     # Create comparison plots for all parameters
-    for param in sorted(all_params):
+    # Only the eight panels published for this control mode.
+    paper_parameters = (
+        "WHP", "WHT", "WH_Density", "WH_MassFlowRate",
+        "BHP", "BHT", "BH_Density", "BH_Viscosity",
+    )
+    for param in paper_parameters:
         print(f"\nCreating comparison plot for {param}...")
         plot_comparison(liquid_data, sc_data, param)
     

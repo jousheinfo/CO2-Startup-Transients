@@ -227,58 +227,6 @@ def load_temperature_data(file_path, skiprows=2, usecols=None):
         return None, None
 
 
-# def plot_temperature_comparison(time_sc, T2_sc_F, time_liquid, T2_liquid_F, 
-#                                case_sc_name="SC CO2", case_liquid_name="Liquid CO2",
-#                                filename="JT_outlet_temperature_comparison.png"):
-#     """
-#     Plot comparison of outlet temperatures for SC and Liquid cases.
-#     """
-    
-#     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
-    
-#     # Plot 1: Temperature vs Time (SC)
-#     ax1.plot(time_sc, T2_sc_F, linewidth=2, color='red', alpha=0.7)
-#     ax1.set_xlabel("Time [s]")
-#     ax1.set_ylabel("Outlet Temperature [°F]")
-#     ax1.set_title(f"{case_sc_name} - Outlet Temperature vs Time")
-#     ax1.grid(True, alpha=0.3)
-    
-#     # Plot 2: Temperature vs Time (Liquid)
-#     ax2.plot(time_liquid, T2_liquid_F, linewidth=2, color='blue', alpha=0.7)
-#     ax2.set_xlabel("Time [s]")
-#     ax2.set_ylabel("Outlet Temperature [°F]")
-#     ax2.set_title(f"{case_liquid_name} - Outlet Temperature vs Time")
-#     ax2.grid(True, alpha=0.3)
-    
-#     # Plot 3: Both cases on same plot
-#     ax3.plot(time_sc, T2_sc_F, label=case_sc_name, linewidth=2, color='red', alpha=0.7)
-#     ax3.plot(time_liquid, T2_liquid_F, label=case_liquid_name, linewidth=2, color='blue', alpha=0.7)
-#     ax3.set_xlabel("Time [s]")
-#     ax3.set_ylabel("Outlet Temperature [°F]")
-#     ax3.set_title("Outlet Temperature Comparison (Isenthalpic Expansion)")
-#     ax3.grid(True, alpha=0.3)
-#     ax3.legend()
-    
-#     # Plot 4: Temperature difference
-#     # Interpolate to common time grid if needed
-#     if len(time_sc) == len(time_liquid) and np.allclose(time_sc, time_liquid):
-#         temp_diff = T2_sc_F - T2_liquid_F
-#         ax4.plot(time_sc, temp_diff, linewidth=2, color='green', alpha=0.7)
-#         ax4.set_xlabel("Time [s]")
-#         ax4.set_ylabel("Temperature Difference [°F] (SC - Liquid)")
-#         ax4.set_title("Temperature Difference Between Cases")
-#         ax4.grid(True, alpha=0.3)
-#         ax4.axhline(y=0, color='k', linestyle='--', alpha=0.5)
-#     else:
-#         ax4.text(0.5, 0.5, "Time arrays differ\nCannot compute difference", 
-#                 ha='center', va='center', transform=ax4.transAxes)
-#         ax4.set_title("Temperature Difference (N/A)")
-    
-#     plt.tight_layout()
-#     plt.savefig(filename, dpi=300, bbox_inches='tight')
-#     plt.show()
-#     print(f"\nTemperature comparison plot saved as {filename}")
-
 
 def plot_temperature_comparison(time_sc, T2_sc_C, time_liquid, T2_liquid_C, 
                                time_sc_wht, T_sc_wht_C, time_liquid_wht, T_liquid_wht_C,
@@ -399,29 +347,11 @@ def main():
     WHT_file_liquid = os.path.join(liquid_trend_path, "WHT.csv")
     time_liquid_wht, T_liquid_wht = load_temperature_data(WHT_file_liquid)
     
-    # Convert WHT temperatures to Celsius if they're in Fahrenheit
-    if time_sc_wht is not None and T_sc_wht is not None:
-        # Check if temperatures are likely in Fahrenheit (above 50°C)
-        if np.max(T_sc_wht) > 50:
-            T_sc_wht_C = (T_sc_wht - C_TO_F_OFFSET) / C_TO_F_SCALE
-            print("SC WHT data converted from Fahrenheit to Celsius")
-        else:
-            T_sc_wht_C = T_sc_wht
-            print("SC WHT data assumed to be in Celsius")
-    else:
-        T_sc_wht_C = None
-    
-    if time_liquid_wht is not None and T_liquid_wht is not None:
-        # Check if temperatures are likely in Fahrenheit (above 50°C)
-        if np.max(T_liquid_wht) > 50:
-            T_liquid_wht_C = (T_liquid_wht - C_TO_F_OFFSET) / C_TO_F_SCALE
-            print("Liquid WHT data converted from Fahrenheit to Celsius")
-        else:
-            T_liquid_wht_C = T_liquid_wht
-            print("Liquid WHT data assumed to be in Celsius")
-    else:
-        T_liquid_wht_C = None
-    
+    # WHT.csv exports Celsius, as declared in its header; do not infer units
+    # from magnitude (valid Celsius values can exceed 50).
+    T_sc_wht_C = T_sc_wht
+    T_liquid_wht_C = T_liquid_wht
+
     # --------------------------------------------------
     # CALCULATE OUTLET TEMPERATURES
     # --------------------------------------------------

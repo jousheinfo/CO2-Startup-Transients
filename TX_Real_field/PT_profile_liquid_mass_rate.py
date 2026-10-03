@@ -12,7 +12,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import CoolProp.CoolProp as CP
-from scipy.interpolate import interp1d
 import numpy as np
 
 
@@ -218,37 +217,26 @@ if __name__ == "__main__":
 
     n_depth, n_time = P_mat_bar.shape
 
-    # CO2 saturation Psat(T): °C -> Pa
-    CO2 = CP.AbstractState("HEOS", "CO2")
-    Tc_K = CO2.keyed_output(CP.iT_critical)
-    Tt_K = CO2.keyed_output(CP.iT_triple)
-
-    Ts_K = np.linspace(Tt_K, Tc_K, 300)
-    Ps_Pa = CP.PropsSI("P", "T", Ts_K, "Q", 0, "CO2")
-
-    interp_Psat = interp1d(
-        Ts_K - 273.15,   # °C
-        Ps_Pa,           # Pa
-        bounds_error=False,
-        fill_value="extrapolate"
-    )
-    Tc_C = Tc_K - 273.15
-
-    # Convert pressure bar -> Pa
+    # Identify CO2 phase from the local pressure (Pa) and temperature (K).
     P_mat_Pa = P_mat_bar * 1e5
-    Psat_mat = interp_Psat(T_mat_C)
-
-    # Phase codes: 0=SC, 1=Liquid, 2=Gas
+    # Preserve plot codes; CoolProp's liquid-like/gas-like regions use 1/2.
+    phase_mapping = {
+        "supercritical": 0,
+        "liquid": 1,
+        "supercritical_liquid": 1,
+        "gas": 2,
+        "supercritical_gas": 2,
+        "twophase": np.nan,
+        "critical_point": np.nan,
+    }
     phase_numeric = np.full((n_depth, n_time), np.nan)
-
-    gas_mask = P_mat_Pa < Psat_mat
-    above_mask = P_mat_Pa > Psat_mat
-    sc_mask = above_mask & (T_mat_C > Tc_C)
-    liq_mask = above_mask & (T_mat_C <= Tc_C)
-
-    phase_numeric[gas_mask] = 2
-    phase_numeric[liq_mask] = 1
-    phase_numeric[sc_mask] = 0
+    for i, j in np.ndindex(phase_numeric.shape):
+        if not (np.isfinite(P_mat_Pa[i, j]) and np.isfinite(T_mat_C[i, j])):
+            continue
+        phase = CP.PhaseSI("P", P_mat_Pa[i, j], "T", T_mat_C[i, j] + 273.15, "CO2")
+        if phase not in phase_mapping:
+            raise ValueError(f"CO2 phase unresolved at depth {depth_values[i]}, time {time_values[j]} s: {phase}")
+        phase_numeric[i, j] = phase_mapping[phase]
 
     # Plot
     time_mesh, depth_mesh = np.meshgrid(time_values, depth_values)
